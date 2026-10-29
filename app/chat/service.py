@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
 from typing import Any, Optional
 
 from app.astrology.calculator import compute_zodiac
@@ -11,7 +10,6 @@ from app.brain.store import GraphStore
 from app.context.selector import ContextSelector
 from app.core.cache import TTLCache
 from app.core.config import settings
-from app.core.exceptions import GraphError, LLMError
 from app.llm.factory import create_llm_provider
 from app.llm.prompts import build_chat_messages, parse_flexible_date
 from app.memory.extractor import HybridExtractor
@@ -126,6 +124,9 @@ class ChatService:
                 logger.warning("Failed to sync profile fact (%s): %s", fact.key, exc)
 
     async def chat(self, user_id: str, session_id: str, message: str, profile: Optional[UserProfile] = None) -> dict[str, Any]:
+        if not message or not message.strip():
+            raise ValueError("Message cannot be empty or whitespace")
+
         # 1. Append user turn to short-term session memory
         await self.short_term.add(session_id, "user", message)
 
@@ -136,8 +137,9 @@ class ChatService:
                 profile.zodiac = compute_zodiac(profile.date_of_birth)
             try:
                 await self.graph_store.upsert_user(profile)
+                await self.sync_profile_facts(profile)
             except Exception as exc:
-                logger.warning("Failed to upsert user: %s", exc)
+                logger.warning("Failed to upsert user / sync profile facts: %s", exc)
 
         # 3. Load merged user profile
         user_profile = await self._get_profile(user_id, profile)
@@ -148,7 +150,12 @@ class ChatService:
                 logger.warning("Failed to sync profile facts: %s", exc)
 
         # 4 & 5. Extract candidate facts from current message and upsert before context selection
-        user_profile = await self._update_memory(user_id, message, user_profile)
+        # (Strictly adheres to docs/context/technical_spec.md Section 1 steps 4 & 5 so single-turn
+        # self-introductions immediately personalize the LLM context)
+        try:
+            user_profile = await self._update_memory(user_id, message, user_profile)
+        except Exception as exc:
+            logger.warning("Pre-selection memory update failed: %s", exc)
 
         # 6. Retrieve short-term turns and facts from graph store
         recent_turns = await self.short_term.get(session_id, limit=settings.short_term_max_messages)
@@ -159,13 +166,13 @@ class ChatService:
         except Exception as exc:
             logger.warning("Failed to get facts: %s", exc)
 
-        # 7. Select relevant context
+        # 7. Select relevant user context prior to LLM call
         selected_facts, context_used = self.selector.select(message, user_profile, facts, recent_turns)
 
-        # 8. Build prompt
+        # 8. Build LLM context
         llm_messages = self._build_messages(message, user_profile, selected_facts, recent_turns)
 
-        # 9. LLM generation with safe caching (never cache fallbacks)
+        # 9. Generate Response (cached; fallback on failure)
         profile_sig = user_profile.model_dump(mode="json", exclude_none=True) if user_profile else None
         recent_sig = [(t.role, t.content) for t in recent_turns]
         cache_key = self.cache.make_key(
@@ -187,7 +194,7 @@ class ChatService:
         # 10. Append assistant turn to short-term session memory
         await self.short_term.add(session_id, "assistant", response_text)
 
-        # 11. Return response
+        # 11. Return telemetry and response
         return {
             "response": response_text,
             "user_id": user_id,
@@ -254,7 +261,17 @@ class ChatService:
         if profile.date_of_birth is not None and profile.zodiac is None:
             profile.zodiac = compute_zodiac(profile.date_of_birth)
 
-    def _fallback_response(self, profile, facts):
+    def _fallback_response(self, profile: Optional[UserProfile], facts: list[MemoryFact]) -> str:
+        greeting = f"Namaste {profile.name}" if (profile and profile.name) else "Namaste seeker"
+        sign_note = f" Reflecting on your {profile.zodiac} energy," if (profile and profile.zodiac) else ""
         if facts:
-            return "I'm having trouble reaching the language model, but based on your stored context I can still help: " + "; ".join(f.value for f in facts[:3])
-        return "I'm having trouble reaching the language model right now. Please try again shortly."
+            context_summary = "; ".join(f"{f.key}: {f.value}" for f in facts[:2])
+            return (
+                f"{greeting}.{sign_note} I am temporarily experiencing a communication delay with the astrological oracle, "
+                f"but I remember your stored focus ({context_summary}). "
+                f"How may I support your journey while full connectivity restores?"
+            )
+        return (
+            f"{greeting}.{sign_note} I am experiencing a brief communication delay with the astrological oracle. "
+            f"Please share your inquiry again in a moment."
+        )

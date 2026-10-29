@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from typing import Any
+
+
 class AppError(Exception):
     status_code = 500
     code = "app_error"
@@ -10,6 +13,12 @@ class AppError(Exception):
             self.status_code = status_code
         if code is not None:
             self.code = code
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "error": self.code,
+            "message": str(self),
+        }
 
 
 class ValidationError(AppError):

@@ -36,7 +36,3 @@ build/
 .pytest_cache/
 
 # Context documentation (separate from tracked README)
-docs/context/
-misc/
-
-cli_chat

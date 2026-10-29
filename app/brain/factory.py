@@ -1,8 +1,12 @@
-from app.core.config import settings
+from app.core import config
 from app.core.exceptions import GraphError
 
 
 def create_graph_store():
+    settings = getattr(config, "settings", None)
+    if settings is None:
+        from app.core.config import Settings
+        settings = Settings(_env_file=".env")
     backend = settings.graph_backend.lower()
     if backend == "neo4j":
         from app.brain.neo4j_store import Neo4jGraphStore

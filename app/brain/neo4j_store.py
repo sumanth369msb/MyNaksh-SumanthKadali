@@ -24,11 +24,14 @@ class Neo4jGraphStore:
 
     async def upsert_user(self, profile: UserProfile) -> None:
         try:
+            props = profile.model_dump(mode="json", exclude_none=True)
+            if "metadata" in props and isinstance(props["metadata"], dict):
+                props["metadata"] = json.dumps(props["metadata"])
             async with self._driver.session() as session:
                 await session.run(
                     "MERGE (u:User {id: $id}) SET u += $props",
                     id=profile.user_id,
-                    props=profile.model_dump(mode="json", exclude_none=True),
+                    props=props,
                 )
         except Exception as exc:
             raise GraphError(str(exc))
@@ -44,6 +47,11 @@ class Neo4jGraphStore:
                     return None
                 data = dict(record["u"])
                 data.setdefault("user_id", user_id)
+                if "metadata" in data and isinstance(data["metadata"], str):
+                    try:
+                        data["metadata"] = json.loads(data["metadata"])
+                    except Exception:
+                        data["metadata"] = {}
                 return UserProfile(**data)
         except Exception as exc:
             raise GraphError(str(exc))
@@ -67,7 +75,9 @@ class Neo4jGraphStore:
                         f.source = $source,
                         f.metadata = $metadata,
                         f.updated_at = $updated_at
-                    MERGE (u)-[:HAS_FACT]->(f)
+                    MERGE (u)-[r:HAS_FACT]->(f)
+                    SET r.relation = $relation,
+                        r.timeframe = $timeframe
                     """,
                     user_id=fact.user_id,
                     fact_id=fact_id,
@@ -78,6 +88,7 @@ class Neo4jGraphStore:
                     confidence=fact.confidence,
                     source=fact.source,
                     metadata=json.dumps(fact.metadata),
+                    timeframe=(fact.metadata or {}).get("timeframe"),
                     created_at=fact.created_at.isoformat(),
                     updated_at=now,
                 )

@@ -26,6 +26,7 @@ TYPE_KEYWORDS = {
     "preference": {"prefer", "language", "hindi", "english"},
     "interest": {"interested", "entrepreneurship", "startup"},
     "profile": {"name", "born", "birth", "zodiac", "age"},
+    "zodiac": {"zodiac", "nakshatra", "sun", "moon", "ascendant", "kundli", "astrology", "horoscope", "ruler", "chart", "sign"},
     "memory": set(),
 }
 
@@ -78,9 +79,6 @@ class ContextSelector:
 
         if has_positive_relevance:
             selected = positive_facts[: self.top_k]
-        elif facts:
-            # Fallback to most recent facts without marking positive relevance
-            selected = sorted(facts, key=_fact_ts, reverse=True)[: min(self.top_k, len(facts))]
         else:
             selected = []
 
@@ -95,5 +93,9 @@ class ContextSelector:
             context_used.append("career_goal")
         if any(k in message.lower() for k in ("language", "prefer")) and any(f.type == "preference" for f in selected):
             context_used.append("language_preference")
+        if any(k in message.lower() for k in ("zodiac", "sign", "sun sign", "horoscope", "natal", "chart")) and (
+            any(f.type == "zodiac" for f in selected) or (profile is not None and getattr(profile, "zodiac", None))
+        ):
+            context_used.append("zodiac_sign")
 
         return selected, context_used

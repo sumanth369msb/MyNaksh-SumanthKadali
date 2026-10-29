@@ -12,7 +12,13 @@ router = APIRouter()
 
 @router.get("/health")
 async def health():
-    return {"status": "ok"}
+    service = get_chat_service()
+    from app.core.config import settings
+    return {
+        "status": "ok",
+        "backend": settings.graph_backend,
+        "store": type(service.graph_store).__name__,
+    }
 
 
 @router.post("/chat", response_model=ChatResponse)

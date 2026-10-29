@@ -208,6 +208,30 @@ class RuleBasedExtractor:
                     confidence=0.8,
                 ))
 
+        memory_match = re.search(r"\b(?:important memory|key memory|cherished memory|milestone)(?:\s+for me)?\s+(?:is|was)\s+([^.,;\n]+)", clean_for_extraction, re.I)
+        if memory_match:
+            val = memory_match.group(1).strip().rstrip(",.")
+            if val:
+                facts.append(CandidateFact(
+                    type="memory",
+                    key="milestone",
+                    value=val,
+                    relation="HAS_FACT",
+                    confidence=0.85,
+                ))
+
+        life_area_match = re.search(r"\b(?:key life areas?|life areas?|focus areas?)\s+(?:are|is)\s+([^.,;\n]+)", clean_for_extraction, re.I)
+        if life_area_match:
+            val = life_area_match.group(1).strip().rstrip(",.")
+            if val:
+                facts.append(CandidateFact(
+                    type="life_area",
+                    key="priority",
+                    value=val,
+                    relation="HAS_FACT",
+                    confidence=0.85,
+                ))
+
         has_goal_intent = any(k in lower_extracted for k in GOAL_INTENT_KEYWORDS)
         has_career_domain = any(k in lower_extracted for k in ["career", "job", "interview", "switch", "product manager", "entrepreneur"])
         if has_goal_intent and has_career_domain:
