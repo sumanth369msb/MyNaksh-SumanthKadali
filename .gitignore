@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+ENV/
+.eggs/
+*.egg
+*.egg-info/
+dist/
+build/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+
+# Tooling / Editor
+.kilo/
+.agents/
+.pytest_cache/
+
+# Context documentation (separate from tracked README)
+docs/context/
+misc/
+
+cli_chat
